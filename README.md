@@ -133,7 +133,35 @@ docker run -d \
   ghcr.io/csenet/instanton-exporter:latest
 ```
 
-Or use docker-compose:
+### Docker Compose with Full Monitoring Stack
+
+For a complete monitoring setup with Prometheus and Grafana:
+
+1. Copy the environment file:
+```bash
+cp .env.example .env
+```
+
+2. Edit `.env` with your credentials:
+```bash
+ARUBA_USERNAME=your-email@example.com
+ARUBA_PASSWORD=your-password
+GRAFANA_PASSWORD=admin
+```
+
+3. Start the stack:
+```bash
+docker-compose up -d
+```
+
+This provides:
+- **Instanton Exporter** on port 9100 (metrics)
+- **Prometheus** on port 9090 (collection)
+- **Grafana** on port 3000 (visualization)
+
+### Simple Docker Compose
+
+Or use a minimal docker-compose:
 
 ```yaml
 version: '3.8'

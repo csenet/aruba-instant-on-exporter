@@ -51,7 +51,29 @@ func (c *ArubaClient) Request(method, endpoint string, body io.Reader) (*http.Re
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-ion-api-version", c.apiVersion)
 
-	return c.httpClient.Do(req)
+	resp, err := c.httpClient.Do(req)
+
+	// If we get a 401, the token might have been invalidated - try once more with a fresh token
+	if err == nil && resp.StatusCode == http.StatusUnauthorized {
+		resp.Body.Close()
+		log.Printf("[WARN] Received 401 Unauthorized, forcing token refresh...")
+
+		// Force token refresh by calling GetAccessToken directly
+		if err := c.authClient.GetAccessToken(); err != nil {
+			return nil, fmt.Errorf("failed to refresh access token after 401: %w", err)
+		}
+
+		// Retry the request with the new token
+		token, err = c.authClient.GetToken()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get refreshed access token: %w", err)
+		}
+
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp, err = c.httpClient.Do(req)
+	}
+
+	return resp, err
 }
 
 type Site struct {

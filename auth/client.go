@@ -13,13 +13,14 @@ import (
 )
 
 type Client struct {
-	httpClient    *http.Client
-	settings      *models.Settings
-	username      string
-	password      string
-	token         *models.AuthToken
-	sessionToken  string
-	pkceChallenge *PKCEChallenge
+	httpClient      *http.Client
+	settings        *models.Settings
+	username        string
+	password        string
+	token           *models.AuthToken
+	tokenObtainedAt time.Time
+	sessionToken    string
+	pkceChallenge   *PKCEChallenge
 }
 
 func NewClient(username, password string) *Client {
@@ -227,13 +228,29 @@ func (c *Client) GetAccessToken() error {
 	}
 
 	c.token = &tokenResp
+	c.tokenObtainedAt = time.Now()
 	fmt.Printf("[INFO] Access token obtained (expires in %d seconds)\n", tokenResp.ExpiresIn)
 
 	return nil
 }
 
-func (c *Client) GetToken() (string, error) {
+// IsTokenExpired checks if the current access token is expired or will expire soon
+// Returns true if token needs refresh (expired or will expire in next 5 minutes)
+func (c *Client) IsTokenExpired() bool {
 	if c.token == nil || c.token.AccessToken == "" {
+		return true
+	}
+
+	// Add a 5-minute buffer to refresh before actual expiration
+	expirationBuffer := 5 * time.Minute
+	expiresAt := c.tokenObtainedAt.Add(time.Duration(c.token.ExpiresIn) * time.Second)
+
+	return time.Now().Add(expirationBuffer).After(expiresAt)
+}
+
+func (c *Client) GetToken() (string, error) {
+	if c.IsTokenExpired() {
+		fmt.Printf("[INFO] Access token expired or expiring soon, refreshing...\n")
 		if err := c.GetAccessToken(); err != nil {
 			return "", err
 		}
