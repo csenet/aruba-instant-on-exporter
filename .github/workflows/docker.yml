@@ -151,7 +151,7 @@ jobs:
 
     - name: Create and push manifest
       run: |
-        docker buildx imagetools create $(echo "${{ steps.meta.outputs.tags }}" | tr '\n' ' ' | sed 's/^/--tag /g' | sed 's/ --tag / --tag /g') \
+        docker buildx imagetools create $(echo "${{ steps.meta.outputs.tags }}" | sed 's/^/--tag /' | tr '\n' ' ') \
           ${{ env.REGISTRY_IMAGE }}@${{ needs.build-amd64.outputs.image-digest }} \
           ${{ env.REGISTRY_IMAGE }}@${{ needs.build-arm64.outputs.image-digest }}
 
