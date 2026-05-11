@@ -50,6 +50,19 @@ func (c *Client) FetchSettings() error {
 		return fmt.Errorf("failed to decode settings: %w", err)
 	}
 
+	// portal.arubainstanton.com now 301s to portal.instant-on.hpe.com after the
+	// HPE Networking rebrand, and the new settings.json no longer carries the
+	// SSO endpoint paths. Backfill them from the historical values so the OAuth
+	// authorize/token flow keeps working.
+	if settings.SSOBaseURL == "" && settings.SSOFQDN != "" {
+		settings.SSOBaseURL = settings.SSOFQDN + "/as"
+	}
+	if settings.SSOEndpointAuthZ == "" {
+		settings.SSOEndpointAuthZ = "/authorization.oauth2"
+	}
+	if settings.SSOEndpointTokens == "" {
+		settings.SSOEndpointTokens = "/token.oauth2"
+	}
 
 	c.settings = &settings
 	return nil
