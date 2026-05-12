@@ -64,8 +64,8 @@ jobs:
         context: .
         platforms: linux/amd64
         labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha,scope=platform-${{ env.PLATFORM_PAIR }}
-        cache-to: type=gha,mode=max,scope=platform-${{ env.PLATFORM_PAIR }}
+        cache-from: type=gha,scope=platform-${{ env.PLATFORM_PAIR }}-v2
+        cache-to: type=gha,mode=max,scope=platform-${{ env.PLATFORM_PAIR }}-v2
         outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
 
   build-arm64:
@@ -109,8 +109,8 @@ jobs:
         context: .
         platforms: linux/arm64
         labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha,scope=platform-${{ env.PLATFORM_PAIR }}
-        cache-to: type=gha,mode=max,scope=platform-${{ env.PLATFORM_PAIR }}
+        cache-from: type=gha,scope=platform-${{ env.PLATFORM_PAIR }}-v2
+        cache-to: type=gha,mode=max,scope=platform-${{ env.PLATFORM_PAIR }}-v2
         outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
 
   merge-manifests:
