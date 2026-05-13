@@ -126,12 +126,6 @@ func (c *Client) GetTemporaryAccessToken() error {
 }
 
 func (c *Client) GetAuthorizationCode() (string, error) {
-	if c.sessionToken == "" {
-		if err := c.GetTemporaryAccessToken(); err != nil {
-			return "", err
-		}
-	}
-
 	// Generate PKCE challenge
 	pkce, err := GeneratePKCE()
 	if err != nil {
@@ -193,6 +187,11 @@ func (c *Client) GetAccessToken() error {
 		if err := c.FetchSettings(); err != nil {
 			return err
 		}
+	}
+
+	// Always refresh session token before getting authorization code
+	if err := c.GetTemporaryAccessToken(); err != nil {
+		return err
 	}
 
 	// Get authorization code
