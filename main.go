@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -31,7 +32,7 @@ func NewArubaClient(username, password string) *ArubaClient {
 			Timeout: 30 * time.Second,
 		},
 		baseURL:    "https://portal.instant-on.hpe.com/api",
-		apiVersion: "7",
+		apiVersion: "24",
 	}
 }
 
@@ -50,6 +51,8 @@ func (c *ArubaClient) Request(method, endpoint string, body io.Reader) (*http.Re
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-ion-api-version", c.apiVersion)
+	req.Header.Set("x-ion-client-platform", "web")
+	req.Header.Set("x-ion-client-type", "InstantOn")
 
 	resp, err := c.httpClient.Do(req)
 
@@ -122,28 +125,62 @@ type WirelessClient struct {
 	SnrInDb                     int    `json:"snrInDb"`
 }
 
-type WiredClient struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	MacAddress    string `json:"macAddress"`
-	ClientType    string `json:"clientType"`
-	IsVoiceDevice bool   `json:"isVoiceDevice"`
-	IPAddress     string `json:"ipAddress"`
-}
-
 type ClientSummaryResponse struct {
 	TotalCount int              `json:"totalCount"`
 	Elements   []WirelessClient `json:"elements"`
 }
 
-type WiredClientSummaryResponse struct {
-	TotalCount int           `json:"totalCount"`
-	Elements   []WiredClient `json:"elements"`
-}
-
 type SitesResponse struct {
 	TotalCount int    `json:"totalCount"`
 	Elements   []Site `json:"elements"`
+}
+
+type LandingPage struct {
+	Kind                                         string `json:"kind"`
+	WirelessClientsCount                         int    `json:"wirelessClientsCount"`
+	WiredClientsCount                            int    `json:"wiredClientsCount"`
+	ConfiguredNetworksCount                      int    `json:"configuredNetworksCount"`
+	CurrentlyActiveNetworksCount                 int    `json:"currentlyActiveNetworksCount"`
+	ConfiguredWiredNetworksCount                 int    `json:"configuredWiredNetworksCount"`
+	CurrentlyActiveWiredNetworksCount            int    `json:"currentlyActiveWiredNetworksCount"`
+	ConfiguredWirelessNetworksCount              int    `json:"configuredWirelessNetworksCount"`
+	CurrentlyActiveWirelessNetworksCount         int    `json:"currentlyActiveWirelessNetworksCount"`
+	CurrentNetworkThroughputInBitsPerSecond      int64  `json:"currentNetworkThroughputInBitsPerSecond"`
+	TotalDataTransferredDuringLast24HoursInBytes int64  `json:"totalDataTransferredDuringLast24HoursInBytes"`
+	Health                                       string `json:"health"`
+	HealthReason                                 string `json:"healthReason"`
+	ActiveAlertsCount                            int    `json:"activeAlertsCount"`
+	DeviceCount                                  int    `json:"deviceCount"`
+	DeviceUpCount                                int    `json:"deviceUpCount"`
+}
+
+type AlertsSummary struct {
+	Kind                   string `json:"kind"`
+	ActiveInfoAlertsCount  int    `json:"activeInfoAlertsCount"`
+	ActiveMinorAlertsCount int    `json:"activeMinorAlertsCount"`
+	ActiveMajorAlertsCount int    `json:"activeMajorAlertsCount"`
+}
+
+// ProbeEndpoint calls an arbitrary endpoint, pretty-prints the JSON response,
+// and returns the status code plus body. Used by PROBE=1 mode to discover the
+// shape of undocumented endpoints before writing typed structs against them.
+func (c *ArubaClient) ProbeEndpoint(endpoint string) (int, string, error) {
+	resp, err := c.Request("GET", endpoint, nil)
+	if err != nil {
+		return 0, "", err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return resp.StatusCode, "", err
+	}
+
+	var pretty bytes.Buffer
+	if json.Indent(&pretty, body, "", "  ") == nil {
+		return resp.StatusCode, pretty.String(), nil
+	}
+	return resp.StatusCode, string(body), nil
 }
 
 func (c *ArubaClient) GetSites() (*SitesResponse, error) {
@@ -218,10 +255,10 @@ func (c *ArubaClient) GetClientSummary(siteID string) (*ClientSummaryResponse, e
 	return &clientResp, nil
 }
 
-func (c *ArubaClient) GetWiredClientSummary(siteID string) (*WiredClientSummaryResponse, error) {
-	resp, err := c.Request("GET", "/sites/"+siteID+"/wiredClientSummary", nil)
+func (c *ArubaClient) GetLandingPage(siteID string) (*LandingPage, error) {
+	resp, err := c.Request("GET", "/sites/"+siteID+"/landingPage", nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get wired client summary: %w", err)
+		return nil, fmt.Errorf("failed to get landing page: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -234,12 +271,34 @@ func (c *ArubaClient) GetWiredClientSummary(siteID string) (*WiredClientSummaryR
 		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	var wiredClientResp WiredClientSummaryResponse
-	if err := json.Unmarshal(body, &wiredClientResp); err != nil {
+	var lp LandingPage
+	if err := json.Unmarshal(body, &lp); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
+	return &lp, nil
+}
 
-	return &wiredClientResp, nil
+func (c *ArubaClient) GetAlertsSummary(siteID string) (*AlertsSummary, error) {
+	resp, err := c.Request("GET", "/sites/"+siteID+"/alertsSummary", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get alerts summary: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var as AlertsSummary
+	if err := json.Unmarshal(body, &as); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+	return &as, nil
 }
 
 var (
@@ -314,6 +373,54 @@ var (
 		},
 		[]string{"site_id", "site_name", "device_id", "device_name"},
 	)
+
+	siteThroughputBps = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "aruba_instant_on_site_throughput_bits_per_second",
+			Help: "Current aggregate network throughput for the site in bits per second",
+		},
+		[]string{"site_id", "site_name"},
+	)
+
+	siteData24hBytes = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "aruba_instant_on_site_data_transferred_24h_bytes",
+			Help: "Total bytes transferred at the site during the last 24 hours",
+		},
+		[]string{"site_id", "site_name"},
+	)
+
+	siteDevicesUp = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "aruba_instant_on_site_devices_up",
+			Help: "Number of devices reporting up at the site",
+		},
+		[]string{"site_id", "site_name"},
+	)
+
+	siteActiveAlerts = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "aruba_instant_on_site_active_alerts",
+			Help: "Number of active (uncleared) alerts at the site, broken down by severity",
+		},
+		[]string{"site_id", "site_name", "severity"},
+	)
+
+	siteNetworksConfigured = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "aruba_instant_on_site_networks_configured",
+			Help: "Number of networks configured at the site (by kind: wired/wireless/total)",
+		},
+		[]string{"site_id", "site_name", "kind"},
+	)
+
+	siteNetworksActive = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "aruba_instant_on_site_networks_active",
+			Help: "Number of networks currently active at the site (by kind: wired/wireless/total)",
+		},
+		[]string{"site_id", "site_name", "kind"},
+	)
 )
 
 type Collector struct {
@@ -376,13 +483,14 @@ func (c *Collector) Collect() {
 			).Set(float64(device.UptimeInSeconds))
 		}
 
-		// Get wireless clients for this site
+		// Get wireless clients for this site. The TotalCount field of this
+		// endpoint is broken under x-ion-api-version: 24 (always returns 0),
+		// so wirelessClientsTotal is populated from landingPage above instead.
+		// We still call this to count clients by network SSID and by AP.
 		wirelessClients, err := c.client.GetClientSummary(site.ID)
 		if err != nil {
 			log.Printf("Failed to get wireless clients for site %s: %v", site.Name, err)
 		} else {
-			wirelessClientsTotal.WithLabelValues(site.ID, site.Name).Set(float64(wirelessClients.TotalCount))
-
 			// Count clients by network SSID
 			networkCounts := make(map[string]int)
 			for _, client := range wirelessClients.Elements {
@@ -432,18 +540,32 @@ func (c *Collector) Collect() {
 			}
 		}
 
-		// Get wired clients for this site (temporarily disabled due to 404 error)
-		// TODO: Fix wired client endpoint
-		/*
-			wiredClients, err := c.client.GetWiredClientSummary(site.ID)
-			if err != nil {
-				log.Printf("Failed to get wired clients for site %s: %v", site.Name, err)
-			} else {
-				wiredClientsTotal.WithLabelValues(site.ID, site.Name).Set(float64(wiredClients.TotalCount))
-			}
-		*/
-		// Set wired clients to 0 for now
-		wiredClientsTotal.WithLabelValues(site.ID, site.Name).Set(0)
+		// LandingPage gives us throughput, 24h data volume, wired client count
+		// (replacing the now-404 wiredClientSummary endpoint), and device up/down.
+		if lp, err := c.client.GetLandingPage(site.ID); err != nil {
+			log.Printf("Failed to get landing page for site %s: %v", site.Name, err)
+		} else {
+			labels := []string{site.ID, site.Name}
+			wiredClientsTotal.WithLabelValues(labels...).Set(float64(lp.WiredClientsCount))
+			wirelessClientsTotal.WithLabelValues(labels...).Set(float64(lp.WirelessClientsCount))
+			siteThroughputBps.WithLabelValues(labels...).Set(float64(lp.CurrentNetworkThroughputInBitsPerSecond))
+			siteData24hBytes.WithLabelValues(labels...).Set(float64(lp.TotalDataTransferredDuringLast24HoursInBytes))
+			siteDevicesUp.WithLabelValues(labels...).Set(float64(lp.DeviceUpCount))
+			siteNetworksConfigured.WithLabelValues(site.ID, site.Name, "total").Set(float64(lp.ConfiguredNetworksCount))
+			siteNetworksConfigured.WithLabelValues(site.ID, site.Name, "wired").Set(float64(lp.ConfiguredWiredNetworksCount))
+			siteNetworksConfigured.WithLabelValues(site.ID, site.Name, "wireless").Set(float64(lp.ConfiguredWirelessNetworksCount))
+			siteNetworksActive.WithLabelValues(site.ID, site.Name, "total").Set(float64(lp.CurrentlyActiveNetworksCount))
+			siteNetworksActive.WithLabelValues(site.ID, site.Name, "wired").Set(float64(lp.CurrentlyActiveWiredNetworksCount))
+			siteNetworksActive.WithLabelValues(site.ID, site.Name, "wireless").Set(float64(lp.CurrentlyActiveWirelessNetworksCount))
+		}
+
+		if as, err := c.client.GetAlertsSummary(site.ID); err != nil {
+			log.Printf("Failed to get alerts summary for site %s: %v", site.Name, err)
+		} else {
+			siteActiveAlerts.WithLabelValues(site.ID, site.Name, "info").Set(float64(as.ActiveInfoAlertsCount))
+			siteActiveAlerts.WithLabelValues(site.ID, site.Name, "minor").Set(float64(as.ActiveMinorAlertsCount))
+			siteActiveAlerts.WithLabelValues(site.ID, site.Name, "major").Set(float64(as.ActiveMajorAlertsCount))
+		}
 	}
 }
 
@@ -476,6 +598,38 @@ func main() {
 		}
 	}
 
+	// PROBE mode: hit a list of undocumented endpoints once against the first
+	// site, dump the raw JSON, and exit. Used to discover response shapes for
+	// metrics that aren't implemented yet.
+	if os.Getenv("PROBE") == "1" {
+		if sites == nil || len(sites.Elements) == 0 {
+			log.Fatal("PROBE mode requires at least one site")
+		}
+		site := sites.Elements[0]
+		probeEndpoints := []string{
+			"/sites/" + site.ID + "/landingPage",
+			"/sites/" + site.ID + "/alertsSummary",
+			"/sites/" + site.ID + "/alerts",
+			"/sites/" + site.ID + "/applicationCategoryUsage",
+			"/sites/" + site.ID + "/networksSummary",
+			"/sites/" + site.ID + "/wiredNetworks",
+			"/sites/" + site.ID + "/wiredClientSummary",
+			"/sites/" + site.ID + "/capabilities",
+			"/sites/" + site.ID + "/clientBlacklist",
+		}
+		fmt.Printf("\n=== PROBE MODE: site %s (%s) ===\n\n", site.Name, site.ID)
+		for _, ep := range probeEndpoints {
+			status, body, err := client.ProbeEndpoint(ep)
+			fmt.Printf("--- %s ---\n", ep)
+			if err != nil {
+				fmt.Printf("ERROR: %v\n\n", err)
+				continue
+			}
+			fmt.Printf("HTTP %d\n%s\n\n", status, body)
+		}
+		return
+	}
+
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(collectors.NewGoCollector())
 	reg.MustRegister(sitesTotal)
@@ -487,6 +641,12 @@ func main() {
 	reg.MustRegister(wiredClientsTotal)
 	reg.MustRegister(clientsByNetwork)
 	reg.MustRegister(clientsByAP)
+	reg.MustRegister(siteThroughputBps)
+	reg.MustRegister(siteData24hBytes)
+	reg.MustRegister(siteDevicesUp)
+	reg.MustRegister(siteActiveAlerts)
+	reg.MustRegister(siteNetworksConfigured)
+	reg.MustRegister(siteNetworksActive)
 
 	collector := NewCollector(client)
 
