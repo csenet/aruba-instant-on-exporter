@@ -31,6 +31,36 @@ A Prometheus exporter for Aruba Instant On network infrastructure, providing com
   - `status`: Site status (Up/Down)
   - `timezone`: Site timezone
 
+#### `aruba_instant_on_site_throughput_bits_per_second`
+- **Type**: Gauge
+- **Description**: Current aggregate network throughput for the site (bits per second)
+- **Labels**: `site_id`, `site_name`
+
+#### `aruba_instant_on_site_data_transferred_24h_bytes`
+- **Type**: Gauge
+- **Description**: Total bytes transferred at the site during the last 24 hours
+- **Labels**: `site_id`, `site_name`
+
+#### `aruba_instant_on_site_devices_up`
+- **Type**: Gauge
+- **Description**: Number of devices reporting up at the site (combine with `aruba_instant_on_devices_total` to derive down count)
+- **Labels**: `site_id`, `site_name`
+
+#### `aruba_instant_on_site_active_alerts`
+- **Type**: Gauge
+- **Description**: Number of active (uncleared) alerts at the site, broken down by severity
+- **Labels**: `site_id`, `site_name`, `severity` (`info` / `minor` / `major`)
+
+#### `aruba_instant_on_site_networks_configured`
+- **Type**: Gauge
+- **Description**: Number of networks configured at the site
+- **Labels**: `site_id`, `site_name`, `kind` (`wired` / `wireless` / `total`)
+
+#### `aruba_instant_on_site_networks_active`
+- **Type**: Gauge
+- **Description**: Number of networks currently active at the site
+- **Labels**: `site_id`, `site_name`, `kind` (`wired` / `wireless` / `total`)
+
 ### Device Metrics
 
 #### `aruba_instant_on_devices_total`
@@ -76,18 +106,23 @@ A Prometheus exporter for Aruba Instant On network infrastructure, providing com
 
 #### `aruba_instant_on_wired_clients_total`
 - **Type**: Gauge
-- **Description**: Total number of wired clients per site (currently not implemented)
+- **Description**: Total number of wired clients per site
 - **Labels**:
   - `site_id`: Unique site identifier
   - `site_name`: Site name
 
 #### `aruba_instant_on_clients_by_network`
 - **Type**: Gauge
-- **Description**: Number of clients by SSID/network
+- **Description**: Current number of wireless clients per SSID (sourced from `networksSummary`, deduplicated)
 - **Labels**:
   - `site_id`: Unique site identifier
   - `site_name`: Site name
   - `network_ssid`: Network SSID name
+
+#### `aruba_instant_on_clients_by_network_band`
+- **Type**: Gauge
+- **Description**: Wireless clients per SSID, broken down by radio band
+- **Labels**: `site_id`, `site_name`, `network_ssid`, `band` (`2.4ghz` / `5ghz` / `6ghz`)
 
 #### `aruba_instant_on_clients_by_ap`
 - **Type**: Gauge
@@ -97,6 +132,37 @@ A Prometheus exporter for Aruba Instant On network infrastructure, providing com
   - `site_name`: Site name
   - `device_id`: Access point device ID
   - `device_name`: Access point name
+
+### Network Metrics (per SSID)
+
+#### `aruba_instant_on_network_throughput_bits_per_second`
+- **Type**: Gauge
+- **Description**: Per-SSID throughput in bits per second, by direction
+- **Labels**: `site_id`, `site_name`, `network_ssid`, `direction` (`upstream` / `downstream`)
+
+#### `aruba_instant_on_network_health`
+- **Type**: Gauge (info-style — value is always `1` for the reported state)
+- **Description**: Per-SSID health state
+- **Labels**: `site_id`, `site_name`, `network_ssid`, `health` (`good` / `fair` / `problem` / etc.)
+
+### Application Usage Metrics
+
+#### `aruba_instant_on_app_category_data_transferred_24h_bytes`
+- **Type**: Gauge
+- **Description**: Bytes transferred per network and application category during the last 24 hours
+- **Labels**: `site_id`, `site_name`, `network`, `category`, `direction` (`upstream` / `downstream`)
+
+### Alert Metrics
+
+#### `aruba_instant_on_alert_active`
+- **Type**: Gauge (value is `1` while the alert is raised; series is removed when cleared)
+- **Description**: Currently-active (uncleared) alerts
+- **Labels**: `site_id`, `site_name`, `alert_id`, `type` (e.g. `deviceDown`), `severity`
+
+#### `aruba_instant_on_alert_age_seconds`
+- **Type**: Gauge
+- **Description**: Seconds elapsed since each active alert was raised
+- **Labels**: `site_id`, `site_name`, `alert_id`, `type`, `severity`
 
 ## Installation
 

@@ -31,6 +31,36 @@ Aruba Instant Onネットワークインフラ向けのPrometheusエクスポー
   - `status`: サイトのステータス（Up/Down）
   - `timezone`: サイトのタイムゾーン
 
+#### `aruba_instant_on_site_throughput_bits_per_second`
+- **タイプ**: Gauge
+- **説明**: サイト全体の現在のスループット（bits per second）
+- **ラベル**: `site_id`, `site_name`
+
+#### `aruba_instant_on_site_data_transferred_24h_bytes`
+- **タイプ**: Gauge
+- **説明**: サイトで過去24時間に転送されたバイト総数
+- **ラベル**: `site_id`, `site_name`
+
+#### `aruba_instant_on_site_devices_up`
+- **タイプ**: Gauge
+- **説明**: サイトで稼働中のデバイス数（`aruba_instant_on_devices_total` と組み合わせて down 数を算出可能）
+- **ラベル**: `site_id`, `site_name`
+
+#### `aruba_instant_on_site_active_alerts`
+- **タイプ**: Gauge
+- **説明**: サイトの未解決アラート数（重要度別）
+- **ラベル**: `site_id`, `site_name`, `severity`（`info` / `minor` / `major`）
+
+#### `aruba_instant_on_site_networks_configured`
+- **タイプ**: Gauge
+- **説明**: サイトに構成されているネットワーク数
+- **ラベル**: `site_id`, `site_name`, `kind`（`wired` / `wireless` / `total`）
+
+#### `aruba_instant_on_site_networks_active`
+- **タイプ**: Gauge
+- **説明**: サイトで現在稼働中のネットワーク数
+- **ラベル**: `site_id`, `site_name`, `kind`（`wired` / `wireless` / `total`）
+
 ### デバイスメトリクス
 
 #### `aruba_instant_on_devices_total`
@@ -76,18 +106,23 @@ Aruba Instant Onネットワークインフラ向けのPrometheusエクスポー
 
 #### `aruba_instant_on_wired_clients_total`
 - **タイプ**: Gauge
-- **説明**: サイトごとの有線クライアント総数（現在は実装未完了）
+- **説明**: サイトごとの有線クライアント総数
 - **ラベル**:
   - `site_id`: サイトの一意識別子
   - `site_name`: サイト名
 
 #### `aruba_instant_on_clients_by_network`
 - **タイプ**: Gauge
-- **説明**: SSID/ネットワークごとのクライアント数
+- **説明**: SSID別の現在の無線クライアント数（`networksSummary` 由来、重複排除済み）
 - **ラベル**:
   - `site_id`: サイトの一意識別子
   - `site_name`: サイト名
   - `network_ssid`: ネットワークSSID名
+
+#### `aruba_instant_on_clients_by_network_band`
+- **タイプ**: Gauge
+- **説明**: SSID別の無線クライアント数を無線バンド別に分解
+- **ラベル**: `site_id`, `site_name`, `network_ssid`, `band`（`2.4ghz` / `5ghz` / `6ghz`）
 
 #### `aruba_instant_on_clients_by_ap`
 - **タイプ**: Gauge
@@ -97,6 +132,37 @@ Aruba Instant Onネットワークインフラ向けのPrometheusエクスポー
   - `site_name`: サイト名
   - `device_id`: アクセスポイントのデバイスID
   - `device_name`: アクセスポイント名
+
+### ネットワークメトリクス（SSID別）
+
+#### `aruba_instant_on_network_throughput_bits_per_second`
+- **タイプ**: Gauge
+- **説明**: SSID別のスループット（bits per second、方向別）
+- **ラベル**: `site_id`, `site_name`, `network_ssid`, `direction`（`upstream` / `downstream`）
+
+#### `aruba_instant_on_network_health`
+- **タイプ**: Gauge（info形式 — 報告された状態に対して値は常に `1`）
+- **説明**: SSID別の健全性状態
+- **ラベル**: `site_id`, `site_name`, `network_ssid`, `health`（`good` / `fair` / `problem` 等）
+
+### アプリケーション利用メトリクス
+
+#### `aruba_instant_on_app_category_data_transferred_24h_bytes`
+- **タイプ**: Gauge
+- **説明**: 過去24時間にネットワーク × アプリカテゴリごとに転送されたバイト数
+- **ラベル**: `site_id`, `site_name`, `network`, `category`, `direction`（`upstream` / `downstream`）
+
+### アラートメトリクス
+
+#### `aruba_instant_on_alert_active`
+- **タイプ**: Gauge（アラート発生中は `1`、解除されると系列が削除される）
+- **説明**: 現在発生中（未解除）のアラート
+- **ラベル**: `site_id`, `site_name`, `alert_id`, `type`（例: `deviceDown`）, `severity`
+
+#### `aruba_instant_on_alert_age_seconds`
+- **タイプ**: Gauge
+- **説明**: 各アクティブアラートが発生してからの経過秒数
+- **ラベル**: `site_id`, `site_name`, `alert_id`, `type`, `severity`
 
 ## インストール
 

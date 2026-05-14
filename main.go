@@ -161,6 +161,59 @@ type AlertsSummary struct {
 	ActiveMajorAlertsCount int    `json:"activeMajorAlertsCount"`
 }
 
+type Network struct {
+	ID                                  string `json:"id"`
+	NetworkName                         string `json:"networkName"`
+	IsEnabled                           bool   `json:"isEnabled"`
+	IsWireless                          bool   `json:"isWireless"`
+	WirelessClientsCount                int    `json:"wirelessClientsCount"`
+	Wireless24GHzClientsCount           int    `json:"wireless24GHzClientsCount"`
+	Wireless5GHzClientsCount            int    `json:"wireless5GHzClientsCount"`
+	Wireless6GHzClientsCount            int    `json:"wireless6GHzClientsCount"`
+	DownstreamThroughputInBitsPerSecond int64  `json:"downstreamThroughputInBitsPerSecond"`
+	UpstreamThroughputInBitsPerSecond   int64  `json:"upstreamThroughputInBitsPerSecond"`
+	Health                              string `json:"health"`
+}
+
+type NetworksSummaryResponse struct {
+	TotalCount int       `json:"totalCount"`
+	Elements   []Network `json:"elements"`
+}
+
+type NetworkDescription struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type ApplicationCategoryUsage struct {
+	NetworkSsid                                       string              `json:"networkSsid"`
+	WirelessNetworkDescription                        *NetworkDescription `json:"wirelessNetworkDescription"`
+	WiredNetworkDescription                           *NetworkDescription `json:"wiredNetworkDescription"`
+	ApplicationCategory                               string              `json:"applicationCategory"`
+	IsBlocked                                         bool                `json:"isBlocked"`
+	DownstreamDataTransferredDuringLast24HoursInBytes int64               `json:"downstreamDataTransferredDuringLast24HoursInBytes"`
+	UpstreamDataTransferredDuringLast24HoursInBytes   int64               `json:"upstreamDataTransferredDuringLast24HoursInBytes"`
+}
+
+type ApplicationCategoryUsageResponse struct {
+	TotalCount int                        `json:"totalCount"`
+	Elements   []ApplicationCategoryUsage `json:"elements"`
+}
+
+type Alert struct {
+	ID                         string `json:"id"`
+	Type                       string `json:"type"`
+	Severity                   string `json:"severity"`
+	RaisedTime                 int64  `json:"raisedTime"`
+	NumberOfSecondsSinceRaised int64  `json:"numberOfSecondsSinceRaised"`
+	ClearedTime                *int64 `json:"clearedTime"`
+}
+
+type AlertsResponse struct {
+	TotalCount int     `json:"totalCount"`
+	Elements   []Alert `json:"elements"`
+}
+
 // ProbeEndpoint calls an arbitrary endpoint, pretty-prints the JSON response,
 // and returns the status code plus body. Used by PROBE=1 mode to discover the
 // shape of undocumented endpoints before writing typed structs against them.
@@ -276,6 +329,75 @@ func (c *ArubaClient) GetLandingPage(siteID string) (*LandingPage, error) {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 	return &lp, nil
+}
+
+func (c *ArubaClient) GetApplicationCategoryUsage(siteID string) (*ApplicationCategoryUsageResponse, error) {
+	resp, err := c.Request("GET", "/sites/"+siteID+"/applicationCategoryUsage", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get app category usage: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var acu ApplicationCategoryUsageResponse
+	if err := json.Unmarshal(body, &acu); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+	return &acu, nil
+}
+
+func (c *ArubaClient) GetAlerts(siteID string) (*AlertsResponse, error) {
+	resp, err := c.Request("GET", "/sites/"+siteID+"/alerts", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get alerts: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var ar AlertsResponse
+	if err := json.Unmarshal(body, &ar); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+	return &ar, nil
+}
+
+func (c *ArubaClient) GetNetworksSummary(siteID string) (*NetworksSummaryResponse, error) {
+	resp, err := c.Request("GET", "/sites/"+siteID+"/networksSummary", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get networks summary: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var ns NetworksSummaryResponse
+	if err := json.Unmarshal(body, &ns); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+	return &ns, nil
 }
 
 func (c *ArubaClient) GetAlertsSummary(siteID string) (*AlertsSummary, error) {
@@ -421,6 +543,54 @@ var (
 		},
 		[]string{"site_id", "site_name", "kind"},
 	)
+
+	clientsByNetworkBand = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "aruba_instant_on_clients_by_network_band",
+			Help: "Number of wireless clients per SSID, broken down by radio band (2.4ghz/5ghz/6ghz)",
+		},
+		[]string{"site_id", "site_name", "network_ssid", "band"},
+	)
+
+	networkThroughputBps = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "aruba_instant_on_network_throughput_bits_per_second",
+			Help: "Per-SSID throughput in bits per second, by direction (upstream/downstream)",
+		},
+		[]string{"site_id", "site_name", "network_ssid", "direction"},
+	)
+
+	networkHealth = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "aruba_instant_on_network_health",
+			Help: "Per-SSID health state (value is always 1 for the reported state)",
+		},
+		[]string{"site_id", "site_name", "network_ssid", "health"},
+	)
+
+	appCategoryDataBytes = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "aruba_instant_on_app_category_data_transferred_24h_bytes",
+			Help: "Bytes transferred per network and application category during the last 24 hours, by direction",
+		},
+		[]string{"site_id", "site_name", "network", "category", "direction"},
+	)
+
+	alertActive = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "aruba_instant_on_alert_active",
+			Help: "Active (uncleared) alerts. Value is 1 while raised.",
+		},
+		[]string{"site_id", "site_name", "alert_id", "type", "severity"},
+	)
+
+	alertAgeSeconds = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "aruba_instant_on_alert_age_seconds",
+			Help: "Seconds elapsed since each active alert was raised",
+		},
+		[]string{"site_id", "site_name", "alert_id", "type", "severity"},
+	)
 )
 
 type Collector struct {
@@ -483,23 +653,35 @@ func (c *Collector) Collect() {
 			).Set(float64(device.UptimeInSeconds))
 		}
 
-		// Get wireless clients for this site. The TotalCount field of this
-		// endpoint is broken under x-ion-api-version: 24 (always returns 0),
-		// so wirelessClientsTotal is populated from landingPage above instead.
-		// We still call this to count clients by network SSID and by AP.
+		// clients_by_network is sourced from networksSummary because clientSummary
+		// returns multiple rows per physical client (per-AP / per-band), which
+		// overcounts by ~3x. networksSummary.elements[].wirelessClientsCount is
+		// the authoritative current count per SSID.
+		if ns, err := c.client.GetNetworksSummary(site.ID); err != nil {
+			log.Printf("Failed to get networks summary for site %s: %v", site.Name, err)
+		} else {
+			for _, n := range ns.Elements {
+				if !n.IsWireless {
+					continue
+				}
+				clientsByNetwork.WithLabelValues(site.ID, site.Name, n.NetworkName).Set(float64(n.WirelessClientsCount))
+				clientsByNetworkBand.WithLabelValues(site.ID, site.Name, n.NetworkName, "2.4ghz").Set(float64(n.Wireless24GHzClientsCount))
+				clientsByNetworkBand.WithLabelValues(site.ID, site.Name, n.NetworkName, "5ghz").Set(float64(n.Wireless5GHzClientsCount))
+				clientsByNetworkBand.WithLabelValues(site.ID, site.Name, n.NetworkName, "6ghz").Set(float64(n.Wireless6GHzClientsCount))
+				networkThroughputBps.WithLabelValues(site.ID, site.Name, n.NetworkName, "downstream").Set(float64(n.DownstreamThroughputInBitsPerSecond))
+				networkThroughputBps.WithLabelValues(site.ID, site.Name, n.NetworkName, "upstream").Set(float64(n.UpstreamThroughputInBitsPerSecond))
+				if n.Health != "" {
+					networkHealth.WithLabelValues(site.ID, site.Name, n.NetworkName, n.Health).Set(1)
+				}
+			}
+		}
+
+		// Get wireless clients (still needed for per-AP counts; per-SSID counts
+		// now come from networksSummary above).
 		wirelessClients, err := c.client.GetClientSummary(site.ID)
 		if err != nil {
 			log.Printf("Failed to get wireless clients for site %s: %v", site.Name, err)
 		} else {
-			// Count clients by network SSID
-			networkCounts := make(map[string]int)
-			for _, client := range wirelessClients.Elements {
-				networkCounts[client.WirelessNetworkName]++
-			}
-			for ssid, count := range networkCounts {
-				clientsByNetwork.WithLabelValues(site.ID, site.Name, ssid).Set(float64(count))
-			}
-
 			// Count clients by access point
 			apCounts := make(map[string]struct {
 				DeviceId   string
@@ -565,6 +747,41 @@ func (c *Collector) Collect() {
 			siteActiveAlerts.WithLabelValues(site.ID, site.Name, "info").Set(float64(as.ActiveInfoAlertsCount))
 			siteActiveAlerts.WithLabelValues(site.ID, site.Name, "minor").Set(float64(as.ActiveMinorAlertsCount))
 			siteActiveAlerts.WithLabelValues(site.ID, site.Name, "major").Set(float64(as.ActiveMajorAlertsCount))
+		}
+
+		if acu, err := c.client.GetApplicationCategoryUsage(site.ID); err != nil {
+			log.Printf("Failed to get app category usage for site %s: %v", site.Name, err)
+		} else {
+			for _, e := range acu.Elements {
+				network := e.NetworkSsid
+				if network == "" {
+					if e.WiredNetworkDescription != nil {
+						network = e.WiredNetworkDescription.Name
+					} else if e.WirelessNetworkDescription != nil {
+						network = e.WirelessNetworkDescription.Name
+					} else {
+						network = "unknown"
+					}
+				}
+				appCategoryDataBytes.WithLabelValues(site.ID, site.Name, network, e.ApplicationCategory, "downstream").Set(float64(e.DownstreamDataTransferredDuringLast24HoursInBytes))
+				appCategoryDataBytes.WithLabelValues(site.ID, site.Name, network, e.ApplicationCategory, "upstream").Set(float64(e.UpstreamDataTransferredDuringLast24HoursInBytes))
+			}
+		}
+
+		// Alerts churn (raised/cleared), so wipe stale entries each cycle and
+		// emit only currently-active ones (clearedTime == nil).
+		alertActive.Reset()
+		alertAgeSeconds.Reset()
+		if ar, err := c.client.GetAlerts(site.ID); err != nil {
+			log.Printf("Failed to get alerts for site %s: %v", site.Name, err)
+		} else {
+			for _, a := range ar.Elements {
+				if a.ClearedTime != nil {
+					continue
+				}
+				alertActive.WithLabelValues(site.ID, site.Name, a.ID, a.Type, a.Severity).Set(1)
+				alertAgeSeconds.WithLabelValues(site.ID, site.Name, a.ID, a.Type, a.Severity).Set(float64(a.NumberOfSecondsSinceRaised))
+			}
 		}
 	}
 }
@@ -647,6 +864,12 @@ func main() {
 	reg.MustRegister(siteActiveAlerts)
 	reg.MustRegister(siteNetworksConfigured)
 	reg.MustRegister(siteNetworksActive)
+	reg.MustRegister(clientsByNetworkBand)
+	reg.MustRegister(networkThroughputBps)
+	reg.MustRegister(networkHealth)
+	reg.MustRegister(appCategoryDataBytes)
+	reg.MustRegister(alertActive)
+	reg.MustRegister(alertAgeSeconds)
 
 	collector := NewCollector(client)
 
